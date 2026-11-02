@@ -24,7 +24,7 @@
 On the [**Releases page**](https://github.com/artemspt/PrismLauncher-Horizon/releases/latest), pick the file for your system:
 
 | System | File |
-|---|---|
+| --- | --- |
 | Linux x86_64 | `PrismLauncher-Linux-x86_64.AppImage`, or `…-Linux-Qt6-Portable-….tar.gz` |
 | Linux aarch64 | `PrismLauncher-Linux-aarch64.AppImage`, or `…-Linux-aarch64-Qt6-Portable-….tar.gz` |
 | Windows x64 | `…-Windows-MSVC-Setup-….exe` (installer), or `…-Windows-MSVC-Portable-….zip` |
