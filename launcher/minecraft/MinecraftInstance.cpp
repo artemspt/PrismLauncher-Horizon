@@ -88,6 +88,8 @@
 #include "AssetsUtils.h"
 #include "MinecraftLoadAndCheck.h"
 #include "PackProfile.h"
+#include "horizon/HorizonInstallTask.h"
+#include "horizon/HorizonLaunchStep.h"
 
 #include "tools/BaseProfiler.h"
 
@@ -238,9 +240,14 @@ void MinecraftInstance::loadSpecificSettings()
         auto envSetting = m_settings->registerSetting("OverrideEnv", false);
         m_settings->registerOverride(global_settings->getSetting("Env"), envSetting);
 
-        if (m_settings->get("InstanceType").toString() != "OneSix") {
+        // Horizon instances keep their own type; anything else is OneSix.
+        auto type = m_settings->get("InstanceType").toString();
+        if (type != "OneSix" && type != "Horizon") {
             m_settings->set("InstanceType", "OneSix");
         }
+
+        m_settings->registerSetting("HorizonExecutablePath", "");
+        m_settings->registerSetting("HorizonResourcesPath", "");
     }
 
     // Join server on launch, this does not have a global override
@@ -1113,6 +1120,11 @@ QString MinecraftInstance::getStatusbarDescription()
 
 QList<LaunchStep::Ptr> MinecraftInstance::createUpdateTask()
 {
+    if (settings()->get("InstanceType").toString() == "Horizon") {
+        // Download/update the Horizon binary for this instance.
+        auto task = makeShared<HorizonInstallTask>(this);
+        return { task };
+    }
     return {
         // create folders
         makeShared<FoldersTask>(this),
@@ -1130,6 +1142,12 @@ LaunchTask* MinecraftInstance::createLaunchTask(AuthSessionPtr session, Minecraf
     updateRuntimeContext();
     auto process = LaunchTask::create(this);
     auto pptr = process.get();
+
+    if (settings()->get("InstanceType").toString() == "Horizon") {
+        process->appendStep(makeShared<TextPrint>(pptr, "Horizon instance: " + gameRoot() + "\\n", MessageLevel::Launcher));
+        process->appendStep(makeShared<HorizonLaunchStep>(pptr, session));
+        return process.release();
+    }
 
     APPLICATION->icons()->saveIcon(iconKey(), FS::PathCombine(gameRoot(), "icon.png"), "PNG");
 

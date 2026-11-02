@@ -102,6 +102,20 @@ set(CORE_SOURCES
 
     # Assertion helper
     AssertHelpers.h
+
+    # Horizon versions
+    horizon/HorizonVersion.h
+    horizon/HorizonVersion.cpp
+    horizon/HorizonVersionList.h
+    horizon/HorizonVersionList.cpp
+    horizon/HorizonLaunchStep.h
+    horizon/HorizonLaunchStep.cpp
+    horizon/HorizonCreationTask.h
+    horizon/HorizonCreationTask.cpp
+    horizon/HorizonPage.h
+    horizon/HorizonPage.cpp
+    horizon/HorizonInstallTask.h
+    horizon/HorizonInstallTask.cpp
 )
 if (UNIX AND NOT CYGWIN AND NOT APPLE)
     set(CORE_SOURCES
@@ -1359,10 +1373,8 @@ else()
     target_link_libraries(Launcher_logic LibArchive::LibArchive)
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    target_link_libraries(Launcher_logic
-        gamemode
-    )
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND TARGET PkgConfig::gamemode)
+    target_link_libraries(Launcher_logic PkgConfig::gamemode)
 endif()
 
 target_link_libraries(Launcher_logic
@@ -1378,10 +1390,13 @@ target_link_libraries(Launcher_logic
     ${Launcher_QT_LIBS}
 )
 target_link_libraries(Launcher_logic
-    cmark::cmark
     LocalPeer
     Launcher_rainbow
 )
+if (TARGET cmark::cmark)
+    target_link_libraries(Launcher_logic cmark::cmark)
+endif()
+
 if (TARGET ${Launcher_QT_DBUS})
     add_compile_definitions(WITH_QTDBUS)
 endif()
@@ -1458,8 +1473,10 @@ if(Launcher_BUILD_UPDATER)
         Qt${QT_VERSION_MAJOR}::Core
         Qt${QT_VERSION_MAJOR}::Network
         ${Launcher_QT_LIBS}
-        cmark::cmark
     )
+    if (TARGET cmark::cmark)
+        target_link_libraries(prism_updater_logic cmark::cmark)
+    endif()
     if(TARGET PkgConfig::libarchive)
         target_link_libraries(prism_updater_logic PkgConfig::libarchive)
     else()

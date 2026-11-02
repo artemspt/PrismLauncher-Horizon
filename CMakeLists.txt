@@ -191,7 +191,7 @@ set(Launcher_VERSION_NAME4_COMMA "${Launcher_VERSION_MAJOR},${Launcher_VERSION_M
 set(Launcher_BUILD_PLATFORM "unknown" CACHE STRING "A short string identifying the platform that this build was built for. Only used to display in the about dialog.")
 
 # Github repo URL with releases for updater
-set(Launcher_UPDATER_GITHUB_REPO "https://github.com/PrismLauncher/PrismLauncher" CACHE STRING "Base github URL for the updater.")
+set(Launcher_UPDATER_GITHUB_REPO "https://github.com/artemspt/PrismLauncher-Horizon" CACHE STRING "Base github URL for the updater.")
 
 # Name to help updater identify valid artifacts
 set(Launcher_BUILD_ARTIFACT "" CACHE STRING "Artifact name to help the updater identify valid artifacts.")
@@ -301,11 +301,14 @@ if(Launcher_QT_VERSION_MAJOR EQUAL 6)
     set(QT_LIBEXECS_DIR ${QT${QT_VERSION_MAJOR}_INSTALL_PREFIX}/${QT${QT_VERSION_MAJOR}_INSTALL_LIBEXECS})
 endif()
 
-find_package(cmark REQUIRED)
+find_package(cmark)
+if(TARGET cmark::cmark)
+    add_compile_definitions(HAVE_CMARK)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(gamemode REQUIRED IMPORTED_TARGET gamemode)
+    pkg_check_modules(gamemode IMPORTED_TARGET gamemode)
 endif()
 
 # Find libqrencode
