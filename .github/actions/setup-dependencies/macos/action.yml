@@ -14,7 +14,13 @@ runs:
       shell: bash
       run: |
         brew update
-        brew install ninja extra-cmake-modules temurin@17 mono
+        brew install ninja extra-cmake-modules temurin@17
+
+    - name: Install mono for the vcpkg cache
+      # Only Debug builds use the cache. Intel Macs have no bottle: brew builds mono from source for hours
+      if: ${{ inputs.build-type == 'Debug' }}
+      shell: bash
+      run: brew install mono
 
     - name: Set JAVA_HOME
       shell: bash
