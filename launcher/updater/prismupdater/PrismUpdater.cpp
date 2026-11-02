@@ -38,6 +38,7 @@
 #include <QNetworkRequest>
 #include <QProcess>
 #include <QProgressDialog>
+#include <QRegularExpression>
 #include <memory>
 
 #include <filesystem>
@@ -1187,7 +1188,8 @@ int PrismUpdaterApp::parseReleasePage(const QByteArray* response)
             release.draft = Json::requireBoolean(release_obj, "draft");
             release.prerelease = Json::requireBoolean(release_obj, "prerelease");
             release.body = release_obj["body"].toString();
-            release.version = Version(release.tag_name);
+            // Our tags read v11.1.1-horizon: a text "v" sorts above any number, so every tag looked newer
+            release.version = Version(QString(release.tag_name).remove(QRegularExpression("^v|-horizon$")));
 
             auto release_assets_obj = Json::requireArray(release_obj, "assets");
             for (auto asset_json : release_assets_obj) {
