@@ -132,7 +132,11 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           SYSTEM: ${{ matrix.system }}
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
         run: |
-          nix build --no-link --print-out-paths .#prismlauncher \
-            | tee -a "$GITHUB_STEP_SUMMARY" \
-            | xargs cachix pin prismlauncher "$TAG"-"$SYSTEM"
+          out=$(nix build --no-link --print-out-paths .#prismlauncher)
+          echo "$out" >> "$GITHUB_STEP_SUMMARY"
+          # Pinned in Prism's cache only with its token: this fork has none, it only builds
+          if [ -n "$CACHIX_AUTH_TOKEN" ]; then
+            cachix pin prismlauncher "$TAG"-"$SYSTEM" "$out"
+          fi
