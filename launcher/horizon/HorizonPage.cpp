@@ -111,6 +111,8 @@ void HorizonPage::coreChanged()
     } else {
         m_coreSelect->setFuzzyFilter(BaseVersionList::VersionIdRole, "");
         m_coreSelect->setEmptyString(tr("No Horizon Hammer builds have been released yet."));
+        // Loaded while filtered out, the list picked nothing: the newest build, as the versions above
+        m_coreSelect->selectRecommended();
     }
     m_coreSelect->setEmptyMode(VersionListView::String);
     suggestCurrent();
@@ -139,7 +141,8 @@ void HorizonPage::suggestCurrent()
         m_dialog->setSuggestedPack();
         return;
     }
-    auto name = m_hammer->isChecked() ? "Horizon Hammer " + version->descriptor() : version->descriptor();
+    // hammer-0.1.0 -> Horizon Hammer 0.1.0
+    auto name = m_hammer->isChecked() ? "Horizon Hammer " + version->descriptor().remove(HammerTagPrefix) : version->descriptor();
     m_dialog->setSuggestedPack(name, new HorizonCreationTask(version));
     m_dialog->setSuggestedIcon("default");
 }
