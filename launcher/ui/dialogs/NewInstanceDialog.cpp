@@ -66,6 +66,7 @@
 #include "ui/pages/modplatform/legacy_ftb/Page.h"
 #include "ui/pages/modplatform/modrinth/ModrinthPage.h"
 #include "ui/pages/modplatform/technic/TechnicPage.h"
+#include "ui/pages/PageSection.h"
 #include "ui/widgets/PageContainer.h"
 
 NewInstanceDialog::NewInstanceDialog(const QString& initialGroup,
@@ -174,6 +175,7 @@ QList<BasePage*> NewInstanceDialog::getPages()
 
     importPage = new ImportPage(this);
 
+    pages.append(new PageSection("minecraft-section", "Minecraft"));
     pages.append(new CustomPage(this));
     pages.append(importPage);
     pages.append(new AtlPage(this));
@@ -184,6 +186,7 @@ QList<BasePage*> NewInstanceDialog::getPages()
     pages.append(new FTBImportAPP::ImportFTBPage(this));
     pages.append(new ModrinthPage(this));
     pages.append(new TechnicPage(this));
+    pages.append(new PageSection("horizon-section", "Horizon"));
     pages.append(new HorizonPage(this));
 
     return pages;

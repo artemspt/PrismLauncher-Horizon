@@ -17,10 +17,11 @@
 
 #include <QEvent>
 #include <QListView>
+#include <QApplication>
 #include <QScrollBar>
 #include <QStyledItemDelegate>
 
-class BasePage;
+#include "ui/pages/BasePage.h"
 const int pageIconSize = 24;
 
 class PageViewDelegate : public QStyledItemDelegate {
@@ -47,6 +48,22 @@ class PageModel : public QAbstractListModel {
     int rowCount(const QModelIndex& parent = QModelIndex()) const { return parent.isValid() ? 0 : m_pages.size(); }
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const
     {
+        auto* page = m_pages.at(index.row());
+        if (page->isSection()) {
+            switch (role) {
+                case Qt::DisplayRole:
+                    return page->displayName().toUpper();
+                case Qt::FontRole: {
+                    QFont font;
+                    font.setBold(true);
+                    font.setPointSizeF(font.pointSizeF() * 0.85);
+                    return font;
+                }
+                case Qt::ForegroundRole:
+                    return QApplication::palette().color(QPalette::PlaceholderText);
+            }
+            return QVariant();
+        }
         switch (role) {
             case Qt::DisplayRole:
                 return m_pages.at(index.row())->displayName();
@@ -59,6 +76,14 @@ class PageModel : public QAbstractListModel {
             }
         }
         return QVariant();
+    }
+
+    // Headings are neither clicked nor reached with the keyboard
+    Qt::ItemFlags flags(const QModelIndex& index) const
+    {
+        if (index.isValid() && m_pages.at(index.row())->isSection())
+            return Qt::NoItemFlags;
+        return QAbstractListModel::flags(index);
     }
 
     void setPages(const QList<BasePage*>& pages)

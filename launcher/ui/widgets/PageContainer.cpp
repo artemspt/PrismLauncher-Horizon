@@ -76,6 +76,17 @@ class PageEntryFilterModel : public QSortFilterProxyModel {
     }
 };
 
+// The first row that opens a page: a heading doesn't
+static QModelIndex firstPage(QSortFilterProxyModel* proxy, PageModel* model)
+{
+    for (int row = 0; row < proxy->rowCount(); row++) {
+        auto index = proxy->index(row, 0);
+        if (!model->pages().at(proxy->mapToSource(index).row())->isSection())
+            return index;
+    }
+    return {};
+}
+
 PageContainer::PageContainer(BasePageProvider* pageProvider, QString defaultId, QWidget* parent)
     : QWidget(parent)
     , m_proxyModel(new PageEntryFilterModel(this))
@@ -124,7 +135,7 @@ bool PageContainer::selectPage(QString pageId)
         index = m_proxyModel->mapFromSource(m_model->index(page->listIndex));
     }
     if (!index.isValid()) {
-        index = m_proxyModel->index(0, 0);
+        index = firstPage(m_proxyModel, m_model);
     }
     if (index.isValid()) {
         m_pageList->setCurrentIndex(index);
@@ -152,7 +163,7 @@ void PageContainer::refreshContainer()
 {
     m_proxyModel->invalidate();
     if (!m_currentPage->shouldDisplay()) {
-        auto index = m_proxyModel->index(0, 0);
+        auto index = firstPage(m_proxyModel, m_model);
         if (index.isValid()) {
             m_pageList->setCurrentIndex(index);
         } else {

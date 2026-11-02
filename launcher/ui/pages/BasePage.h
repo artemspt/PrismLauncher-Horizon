@@ -51,6 +51,8 @@ class BasePage {
     virtual QIcon icon() const = 0;
     virtual bool apply() { return true; }
     virtual bool shouldDisplay() const { return true; }
+    /// A heading in the page list: shown, never opened.
+    virtual bool isSection() const { return false; }
     virtual QString helpPage() const { return QString(); }
     void opened()
     {

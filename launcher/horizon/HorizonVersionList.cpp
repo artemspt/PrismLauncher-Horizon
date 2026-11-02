@@ -8,7 +8,9 @@
 #include <QNetworkRequest>
 #include <QUrl>
 
-HorizonVersionList::HorizonVersionList(QObject* parent) : BaseVersionList(parent) {}
+HorizonVersionList::HorizonVersionList(QString repo, QString tagPrefix, QObject* parent)
+    : BaseVersionList(parent), m_repo(std::move(repo)), m_tagPrefix(std::move(tagPrefix))
+{}
 
 Task::Ptr HorizonVersionList::getLoadTask(bool forceReload)
 {
@@ -117,7 +119,7 @@ void HorizonVersionListLoadTask::executeTask()
     const QString assetName = "horizon-linux-x86_64.tar.gz";
 #endif
 
-    QUrl url("https://api.github.com/repos/horizon-rust/horizon/releases?per_page=100");
+    QUrl url(QString("https://api.github.com/repos/%1/releases?per_page=100").arg(m_list->repo()));
     QNetworkRequest request(url);
     request.setRawHeader("User-Agent", "PrismLauncher-Horizon");
     request.setRawHeader("Accept", "application/vnd.github+json");
@@ -168,7 +170,7 @@ void HorizonVersionListLoadTask::replyFinished()
             continue;
         const QJsonObject release = value.toObject();
         const QString tagName = release.value("tag_name").toString();
-        if (tagName.isEmpty() || tagName.startsWith("launcher@"))
+        if (tagName.isEmpty() || tagName.startsWith("launcher@") || !tagName.startsWith(m_list->tagPrefix()))
             continue;
 
         QString downloadUrl;

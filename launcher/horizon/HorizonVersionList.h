@@ -15,7 +15,11 @@ class HorizonVersionList : public BaseVersionList {
     enum class Status { NotDone, InProgress, Done };
 
    public:
-    explicit HorizonVersionList(QObject* parent = nullptr);
+    /// Releases of `repo` on GitHub; with a `tagPrefix`, only the tags that start with it.
+    explicit HorizonVersionList(QString repo, QString tagPrefix = {}, QObject* parent = nullptr);
+
+    QString repo() const { return m_repo; }
+    QString tagPrefix() const { return m_tagPrefix; }
 
     Task::Ptr getLoadTask(bool forceReload = false) override;
     bool isLoaded() override;
@@ -36,6 +40,8 @@ class HorizonVersionList : public BaseVersionList {
     Status m_status = Status::NotDone;
     shared_qobject_ptr<HorizonVersionListLoadTask> m_load_task;
     QList<BaseVersion::Ptr> m_versions;
+    QString m_repo;
+    QString m_tagPrefix;
 };
 
 class HorizonVersionListLoadTask : public Task {
