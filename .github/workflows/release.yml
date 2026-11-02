@@ -1,208 +1,126 @@
-name: Build and Release
+name: Build Application and Make Release
 
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
+      - "*"
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04-arm
-            artifact: linux-aarch64
-    runs-on: ${{ matrix.os }}
-    continue-on-error: true
-    env:
-      APP_NAME: PrismLauncher-Horizon
+  build_release:
+    name: Build Release
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      # Required for Azure Trusted Signing
+      id-token: write
+      # Required for vcpkg binary cache
+      packages: write
+    with:
+      build-type: Release
+      environment: Release
+    secrets: inherit
+
+  create_release:
+    needs: build_release
+    permissions:
+      contents: write
+    runs-on: ubuntu-slim
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "25"
-
-      - name: Install dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            cmake \
-            ninja-build \
-            pkg-config \
-            extra-cmake-modules \
-            libarchive-dev \
-            libqrencode-dev \
-            gamemode-dev \
-            libtomlplusplus-dev \
-            libcmark-dev \
-            cmark \
-            zlib1g-dev \
-            qt6-base-dev \
-            qt6-base-dev-tools \
-            qt6-networkauth-dev \
-            qt6-tools-dev \
-            qt6-tools-dev-tools \
-            qt6-declarative-dev \
-            libgl1-mesa-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            libxrandr-dev \
-            libxi-dev \
-            libxcb1-dev
-
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake ninja extra-cmake-modules qt@6 libarchive qrencode cmark tomlplusplus
-
-      - name: Set up Visual Studio Developer Command Prompt (Windows only)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Install Qt (Windows only)
-        if: runner.os == 'Windows'
-        run: |
-          python -m pip install aqtinstall
-          aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 -O C:\Qt -m qtnetworkauth
-        shell: pwsh
-
-      - name: Install vcpkg dependencies (Windows only)
-        if: runner.os == 'Windows'
-        run: |
-          $env:VCPKG_ROOT = 'C:\vcpkg'
-          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows
-        shell: pwsh
-
-      - name: Configure (Linux/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Linux" ]; then
-            cmake -S . -B build -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_PREFIX_PATH="/usr" \
-              -DLAUNCHER_QT_VERSION_MAJOR=6 \
-              -DLAUNCHER_BUILD_PLATFORM=linux-x86_64
-          else
-            PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:/opt/homebrew/opt/libarchive/lib/pkgconfig:$PKG_CONFIG_PATH" \
-            cmake -S . -B build -G Ninja \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_PREFIX_PATH="/opt/homebrew/opt/qt@6;/opt/homebrew" \
-              -DLAUNCHER_QT_VERSION_MAJOR=6 \
-              -DLAUNCHER_BUILD_PLATFORM=macos
-          fi
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          cmake -S . -B build -G "NMake Makefiles" `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/msvc2022_64" `
-            -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DLAUNCHER_QT_VERSION_MAJOR=6 `
-            -DLAUNCHER_BUILD_PLATFORM=windows-x86_64
-        shell: pwsh
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: cmake --build build --target prismlauncher --config Release
-        shell: pwsh
-
-      - name: Download appimagetool (Linux ARM64)
-        if: runner.os == 'Linux' && runner.arch == 'ARM64'
-        run: |
-          curl -L -o /tmp/appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-aarch64.AppImage
-          chmod +x /tmp/appimagetool
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item build\prismlauncher.exe dist\prismlauncher-windows-x86_64.exe
-          Compress-Archive -Path dist\prismlauncher-windows-x86_64.exe -DestinationPath dist\prismlauncher-windows-x86_64.zip -Force
-          Push-Location dist
-          $hash = (Get-FileHash prismlauncher-windows-x86_64.exe -Algorithm SHA256).Hash
-          "$hash  prismlauncher-windows-x86_64.exe" | Out-File SHA256SUMS -Encoding ascii
-          Pop-Location
-        shell: pwsh
-
-      - name: Build (Linux/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: cmake --build build --target prismlauncher -j2
-
-      - name: Package (Linux/macOS)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          mkdir -p dist
-          if [ "$RUNNER_OS" = "Linux" ] && [ "$(uname -m)" = "aarch64" ]; then
-            cp build/prismlauncher dist/prismlauncher-linux-aarch64
-            chmod +x dist/prismlauncher-linux-aarch64
-            tar -czf dist/prismlauncher-linux-aarch64.tar.gz -C dist prismlauncher-linux-aarch64
-            rm -rf appdir && mkdir -p appdir/usr/bin && cp build/prismlauncher appdir/usr/bin/prismlauncher && chmod +x appdir/usr/bin/prismlauncher
-            ln -s usr/bin/prismlauncher appdir/AppRun
-            printf '%s
-' '[Desktop Entry]' 'Name=Prism Launcher Horizon' 'Exec=prismlauncher' 'Icon=prismlauncher' 'Type=Application' 'Categories=Game;' > appdir/prismlauncher.desktop
-            printf 'PNG
-
-' > appdir/prismlauncher.png || true
-            ARCH=aarch64 /tmp/appimagetool appdir dist/PrismLauncher-Horizon-aarch64.AppImage
-            (cd dist && sha256sum prismlauncher-linux-aarch64 prismlauncher-linux-aarch64.tar.gz PrismLauncher-Horizon-aarch64.AppImage > SHA256SUMS)
-          elif [ "$RUNNER_OS" = "Linux" ]; then
-            cp build/prismlauncher dist/prismlauncher-linux-x86_64
-            chmod +x dist/prismlauncher-linux-x86_64
-            tar -czf dist/prismlauncher-linux-x86_64.tar.gz -C dist prismlauncher-linux-x86_64
-            (cd dist && sha256sum prismlauncher-linux-x86_64 prismlauncher-linux-x86_64.tar.gz > SHA256SUMS)
-          elif [ "$RUNNER_OS" = "macOS" ]; then
-            cp build/prismlauncher dist/prismlauncher-macos
-            chmod +x dist/prismlauncher-macos
-            tar -czf dist/prismlauncher-macos.tar.gz -C dist prismlauncher-macos
-            (cd dist && sha256sum prismlauncher-macos prismlauncher-macos.tar.gz > SHA256SUMS)
-          else
-            cp build/prismlauncher.exe dist/prismlauncher-windows-x86_64.exe
-            (cd dist && zip -j prismlauncher-windows-x86_64.zip prismlauncher-windows-x86_64.exe)
-            (cd dist && sha256sum prismlauncher-windows-x86_64.exe > SHA256SUMS)
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: prismlauncher-${{ matrix.artifact }}
-          path: dist/*
-          if-no-files-found: warn
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/') && (needs.build.result == 'success' || needs.build.result == 'failure')
-    runs-on: ubuntu-latest
-    steps:
+          submodules: "true"
+          path: "PrismLauncher-source"
       - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
+        uses: actions/download-artifact@v8
+      - name: Grab and store version
+        run: |
+          tag_name=$(echo ${{ github.ref }} | grep -oE "[^/]+$")
+          echo "VERSION=$tag_name" >> $GITHUB_ENV
+      - name: Package artifacts properly
+        run: |
+          mv ${{ github.workspace }}/PrismLauncher-source PrismLauncher-${{ env.VERSION }}
+          mv PrismLauncher-Linux-Qt6-Portable*/PrismLauncher-portable.tar.gz PrismLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
+          mv PrismLauncher-Linux-aarch64-Qt6-Portable*/PrismLauncher-portable.tar.gz PrismLauncher-Linux-aarch64-Qt6-Portable-${{ env.VERSION }}.tar.gz
+          mv PrismLauncher-*.AppImage/PrismLauncher-*-x86_64.AppImage PrismLauncher-Linux-x86_64.AppImage
+          mv PrismLauncher-*.AppImage.zsync/PrismLauncher-*-x86_64.AppImage.zsync PrismLauncher-Linux-x86_64.AppImage.zsync
+          mv PrismLauncher-*.AppImage/PrismLauncher-*-aarch64.AppImage PrismLauncher-Linux-aarch64.AppImage
+          mv PrismLauncher-*.AppImage.zsync/PrismLauncher-*-aarch64.AppImage.zsync PrismLauncher-Linux-aarch64.AppImage.zsync
+          mv PrismLauncher-macOS*/PrismLauncher.zip PrismLauncher-macOS-${{ env.VERSION }}.zip
+          mv PrismLauncher-macOS*/PrismLauncher.dmg PrismLauncher-macOS-${{ env.VERSION }}.dmg
 
-      - name: Upload release assets
+          tar --exclude='.git' -czf PrismLauncher-${{ env.VERSION }}.tar.gz PrismLauncher-${{ env.VERSION }}
+
+          for d in PrismLauncher-Windows-MSVC*; do
+            cd "${d}" || continue
+            LEGACY="$(echo -n ${d} | grep -o Legacy || true)"
+            ARM64="$(echo -n ${d} | grep -o arm64 || true)"
+            INST="$(echo -n ${d} | grep -o Setup || true)"
+            PORT="$(echo -n ${d} | grep -o Portable || true)"
+            NAME="PrismLauncher-Windows-MSVC"
+            test -z "${LEGACY}" || NAME="${NAME}-Legacy"
+            test -z "${ARM64}" || NAME="${NAME}-arm64"
+            test -z "${PORT}" || NAME="${NAME}-Portable"
+            test -z "${INST}" || mv PrismLauncher-*.exe ../${NAME}-Setup-${{ env.VERSION }}.exe
+            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
+            cd ..
+          done
+
+          for d in PrismLauncher-Windows-MinGW-w64*; do
+            cd "${d}" || continue
+            INST="$(echo -n ${d} | grep -o Setup || true)"
+            PORT="$(echo -n ${d} | grep -o Portable || true)"
+            NAME="PrismLauncher-Windows-MinGW-w64"
+            test -z "${PORT}" || NAME="${NAME}-Portable"
+            test -z "${INST}" || mv PrismLauncher-*.exe ../${NAME}-Setup-${{ env.VERSION }}.exe
+            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
+            cd ..
+          done
+
+          for d in PrismLauncher-Windows-MinGW-arm64*; do
+            cd "${d}" || continue
+            INST="$(echo -n ${d} | grep -o Setup || true)"
+            PORT="$(echo -n ${d} | grep -o Portable || true)"
+            NAME="PrismLauncher-Windows-MinGW-arm64"
+            test -z "${PORT}" || NAME="${NAME}-Portable"
+            test -z "${INST}" || mv PrismLauncher-*.exe ../${NAME}-Setup-${{ env.VERSION }}.exe
+            test -n "${INST}" || zip -r -9 "../${NAME}-${{ env.VERSION }}.zip" *
+            cd ..
+          done
+
+      - name: Create release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref }}
+          name: Prism Launcher Horizon ${{ env.VERSION }}
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: true
           files: |
-            dist/**
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            PrismLauncher-Linux-x86_64.AppImage
+            PrismLauncher-Linux-x86_64.AppImage.zsync
+            PrismLauncher-Linux-aarch64.AppImage
+            PrismLauncher-Linux-aarch64.AppImage.zsync
+            PrismLauncher-Linux-Qt6-Portable-${{ env.VERSION }}.tar.gz
+            PrismLauncher-Linux-aarch64-Qt6-Portable-${{ env.VERSION }}.tar.gz
+            PrismLauncher-Windows-MinGW-w64-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MinGW-w64-Portable-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MinGW-w64-Setup-${{ env.VERSION }}.exe
+            PrismLauncher-Windows-MinGW-arm64-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MinGW-arm64-Portable-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MinGW-arm64-Setup-${{ env.VERSION }}.exe
+            PrismLauncher-Windows-MSVC-arm64-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MSVC-arm64-Portable-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MSVC-arm64-Setup-${{ env.VERSION }}.exe
+            PrismLauncher-Windows-MSVC-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MSVC-Portable-${{ env.VERSION }}.zip
+            PrismLauncher-Windows-MSVC-Setup-${{ env.VERSION }}.exe
+            PrismLauncher-macOS-${{ env.VERSION }}.zip
+            PrismLauncher-macOS-${{ env.VERSION }}.dmg
+            PrismLauncher-${{ env.VERSION }}.tar.gz

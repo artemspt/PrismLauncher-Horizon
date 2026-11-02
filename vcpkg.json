@@ -5,15 +5,15 @@
       "host": true
     },
     {
+      "name": "libqrencode",
+      "default-features": false
+    },
+    {
       "name": "pkgconf",
       "host": true
     },
 
-    {
-      "name": "libqrencode",
-      "default-features": false
-    },
-
+    "cmark",
     {
       "name": "libarchive",
       "default-features": false,
