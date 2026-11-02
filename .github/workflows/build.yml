@@ -78,7 +78,7 @@ jobs:
             vcvars-arch: arm64
             qt-version: 6.10.2
 
-          - os: macos-15
+          - os: macos-15-intel
             artifact-name: macOS
             cmake-preset: macos_universal
             macosx-deployment-target: 12.0
