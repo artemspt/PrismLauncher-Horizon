@@ -84,6 +84,9 @@ class PrismExternalUpdater : public ExternalUpdater {
     void offerUpdate(const QString& versionName, const QString& versionTag, const QString& releaseNotes, bool triggeredByUser) const;
     void performUpdate(const QString& versionTag) const;
 
+    /** Closes the launcher and opens the updater's list of builds, to install any of them. */
+    void chooseVersion() const;
+
    public slots:
     void autoCheckTimerFired() const;
 

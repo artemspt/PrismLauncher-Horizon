@@ -1,9 +1,21 @@
 name: Build Application and Make Release
 
+# A tag publishes a release; a push to main publishes a nightly, the prerelease nightly-<date>-<commit>, which the
+# launcher's updater offers when nightly builds are allowed. The three newest nightlies are kept.
 on:
   push:
     tags:
       - "*"
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".github/workflows/nix.yml"
+
+# A newer push makes a running nightly pointless; a release is never cancelled
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
 
 permissions: {}
 
@@ -41,7 +53,12 @@ jobs:
         uses: actions/download-artifact@v8
       - name: Grab and store version
         run: |
-          tag_name=$(echo ${{ github.ref }} | grep -oE "[^/]+$")
+          if [ "${{ github.ref_type }}" = tag ]; then
+            tag_name=$(echo ${{ github.ref }} | grep -oE "[^/]+$")
+          else
+            # The updater reads the commit from the tag's end: it is a newer nightly when it isn't the running build's
+            tag_name="nightly-$(date -u +%F)-${GITHUB_SHA::7}"
+          fi
           echo "VERSION=$tag_name" >> $GITHUB_ENV
       - name: Package artifacts properly
         run: |
@@ -99,10 +116,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.ref }}
+          tag_name: ${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
           name: Prism Launcher Horizon ${{ env.VERSION }}
           draft: false
-          prerelease: false
+          prerelease: ${{ github.ref_type == 'branch' }}
+          make_latest: ${{ github.ref_type == 'tag' }}
           fail_on_unmatched_files: false
           files: |
             PrismLauncher-Linux-x86_64.AppImage
@@ -126,3 +145,12 @@ jobs:
             PrismLauncher-macOS-${{ env.VERSION }}.zip
             PrismLauncher-macOS-${{ env.VERSION }}.dmg
             PrismLauncher-${{ env.VERSION }}.tar.gz
+
+      - name: Keep the three newest nightlies
+        if: ${{ github.ref_type == 'branch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list -R "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            -q '[.[] | select(.tagName | startswith("nightly-"))] | sort_by(.createdAt) | reverse | .[3:] | .[].tagName' |
+            while read -r old; do gh release delete "$old" -R "$GITHUB_REPOSITORY" --yes --cleanup-tag; done

@@ -261,7 +261,7 @@ void PrismExternalUpdater::setUpdateCheckInterval(double seconds)
 void PrismExternalUpdater::setBetaAllowed(bool allowed)
 {
     priv->allowBeta = allowed;
-    priv->settings->setValue("auto_beta", allowed);
+    priv->settings->setValue("allow_beta", allowed);
     priv->settings->sync();
 }
 
@@ -341,6 +341,35 @@ void PrismExternalUpdater::offerUpdate(const QString& versionName,
     }
     priv->settings->endGroup();
     priv->settings->sync();
+}
+
+void PrismExternalUpdater::chooseVersion() const
+{
+    // The updater's own list of every published build; the launcher closes so it can be replaced
+    QProcess proc;
+    auto exeName = QStringLiteral("%1_updater").arg(BuildConfig.LAUNCHER_APP_BINARY_NAME);
+#ifdef Q_OS_WIN32
+    exeName.append(".exe");
+
+    auto env = QProcessEnvironment::systemEnvironment();
+    env.insert("__COMPAT_LAYER", "RUNASINVOKER");
+    proc.setProcessEnvironment(env);
+#else
+    exeName = QString("bin/%1").arg(exeName);
+#endif
+
+    QStringList args = { "--dir", priv->dataDir.absolutePath(), "--select-ui", "--allow-downgrade" };
+    if (priv->allowBeta) {
+        args.append("--pre-release");
+    }
+
+    proc.setProgram(priv->appDir.absoluteFilePath(exeName));
+    proc.setArguments(args);
+    if (!proc.startDetached()) {
+        qDebug() << "Failed to start updater:" << proc.error() << proc.errorString();
+        return;
+    }
+    QCoreApplication::exit();
 }
 
 void PrismExternalUpdater::performUpdate(const QString& versionTag) const

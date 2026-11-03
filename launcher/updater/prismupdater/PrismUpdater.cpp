@@ -41,6 +41,18 @@
 #include <QRegularExpression>
 #include <memory>
 
+// A release's version from its tag: this fork tags v11.1.1-horizon, and a text "v" would sort above every number
+static Version tagVersion(const QString& tag)
+{
+    return Version(QString(tag).remove(QRegularExpression("^v|-horizon$")));
+}
+
+// A nightly is tagged nightly-<date>-<commit> (release.yml): it has no version of its own
+static bool isNightly(const GitHubRelease& release)
+{
+    return release.tag_name.startsWith("nightly-");
+}
+
 #include <filesystem>
 namespace fs = std::filesystem;
 
@@ -322,7 +334,8 @@ PrismUpdaterApp::PrismUpdaterApp(int& argc, char** argv) : QApplication(argc, ar
     m_printOnly = parser.isSet("list");
     auto user_version = parser.value("install-version");
     if (!user_version.isEmpty()) {
-        m_userSelectedVersion = Version(user_version);
+        m_userSelectedVersion = tagVersion(user_version);
+        m_userSelectedTag = user_version;
     }
     m_selectUI = parser.isSet("select-ui");
     m_allowDowngrade = parser.isSet("allow-downgrade");
@@ -452,19 +465,20 @@ void PrismUpdaterApp::run()
                                                                         "supported when running the flatpak version of Prism Launcher."));
         return;
     }
-    if (m_isAppimage) {
+    // AppImageUpdate only follows the latest release: a nightly or a chosen release replaces the image in performInstall
+    if (m_isAppimage && !isNightly(latest) && m_userSelectedVersion.isEmpty() && !m_selectUI) {
         bool result = true;
         if (need_update)
             result = callAppImageUpdate();
         return exit(result ? 0 : 1);
     }
 
-    if (need_update || m_forceUpdate || !m_userSelectedVersion.isEmpty()) {
+    if (need_update || m_forceUpdate || !m_userSelectedVersion.isEmpty() || m_selectUI) {
         GitHubRelease update_release = latest;
         if (!m_userSelectedVersion.isEmpty()) {
             bool found = false;
             for (auto rls : m_releases) {
-                if (rls.version == m_userSelectedVersion) {
+                if (rls.tag_name == m_userSelectedTag || (!isNightly(rls) && rls.version == m_userSelectedVersion)) {
                     found = true;
                     update_release = rls;
                     break;
@@ -479,8 +493,10 @@ void PrismUpdaterApp::run()
         } else if (m_selectUI) {
             update_release = selectRelease();
             if (!update_release.isValid()) {
-                showFatalErrorMessage("No version selected.", "No version was selected.");
-                return;
+                // Opened from the launcher's settings, which closed for it: cancelling goes back to the launcher
+                auto appimage = QProcessEnvironment::systemEnvironment().value(QStringLiteral("APPIMAGE"));
+                QProcess::startDetached(appimage.isEmpty() ? m_prismExecutable : appimage, {});
+                return exit(0);
             }
         }
 
@@ -897,6 +913,20 @@ void PrismUpdaterApp::performInstall(QFileInfo file)
     FS::write(changelog_path, m_install_release.body.toUtf8());
 
     logUpdate(tr("Updating from %1 to %2").arg(m_prismVersion).arg(m_install_release.tag_name));
+    if (m_isAppimage) {
+        const auto appimage = QProcessEnvironment::systemEnvironment().value(QStringLiteral("APPIMAGE"));
+        logUpdate(tr("Replacing the AppImage at %1").arg(appimage));
+        QFile::remove(appimage + ".old");
+        QFile::rename(appimage, appimage + ".old");
+        if (!QFile::copy(file.absoluteFilePath(), appimage)) {
+            QFile::rename(appimage + ".old", appimage);
+            return showFatalErrorMessage(tr("Update Failed"), tr("Could not replace the AppImage at %1").arg(appimage));
+        }
+        QFile::setPermissions(appimage, QFile::permissions(appimage) | QFileDevice::ExeOwner | QFileDevice::ExeGroup | QFileDevice::ExeOther);
+        QFile::remove(appimage + ".old");
+        QProcess::startDetached(appimage, {});
+        return exit(0);
+    }
     if (m_isPortable || file.fileName().endsWith(".zip") || file.fileName().endsWith(".tar.gz")) {
         write_lock_file(update_lock_path, QDateTime::currentDateTime(), m_prismVersion, m_install_release.tag_name, m_rootPath, m_dataPath);
         logUpdate(tr("Updating portable install at %1").arg(m_rootPath));
@@ -1189,7 +1219,7 @@ int PrismUpdaterApp::parseReleasePage(const QByteArray* response)
             release.prerelease = Json::requireBoolean(release_obj, "prerelease");
             release.body = release_obj["body"].toString();
             // Our tags read v11.1.1-horizon: a text "v" sorts above any number, so every tag looked newer
-            release.version = Version(QString(release.tag_name).remove(QRegularExpression("^v|-horizon$")));
+            release.version = tagVersion(release.tag_name);
 
             auto release_assets_obj = Json::requireArray(release_obj, "assets");
             for (auto asset_json : release_assets_obj) {
@@ -1224,15 +1254,21 @@ GitHubRelease PrismUpdaterApp::getLatestRelease()
             continue;
         if (release.prerelease && !m_allowPreRelease)
             continue;
-        if (!latest.isValid() || (release.version > latest.version)) {
+        if (!latest.isValid()) {
             latest = release;
+            continue;
         }
+        // With nightlies allowed the newest build wins: a nightly is built from main after the release before it
+        if (isNightly(release) || isNightly(latest) ? release.created_at > latest.created_at : release.version > latest.version)
+            latest = release;
     }
     return latest;
 }
 
 bool PrismUpdaterApp::needUpdate(const GitHubRelease& release)
 {
+    if (isNightly(release))
+        return !m_prismGitCommit.startsWith(release.tag_name.section('-', -1));
     auto current_ver = Version(QString("%1.%2.%3").arg(m_prismVersionMajor).arg(m_prismVersionMinor).arg(m_prismVersionPatch));
     return current_ver < release.version;
 }

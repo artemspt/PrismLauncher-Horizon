@@ -53,6 +53,9 @@
 #include "ui/themes/ITheme.h"
 #include "ui/themes/ThemeManager.h"
 #include "updater/ExternalUpdater.h"
+#if !defined(Q_OS_MAC)
+#include "updater/PrismExternalUpdater.h"
+#endif
 
 #include <QApplication>
 #include <QProcess>
@@ -75,6 +78,14 @@ LauncherPage::LauncherPage(QWidget* parent) : QWidget(parent), ui(new Ui::Launch
     loadSettings();
 
     ui->updateSettingsBox->setHidden(!APPLICATION->updater());
+#if defined(Q_OS_MAC)
+    // Sparkle installs only the newest build
+    ui->chooseVersionButton->setVisible(false);
+#else
+    auto prismUpdater = dynamic_cast<PrismExternalUpdater*>(APPLICATION->updater());
+    ui->chooseVersionButton->setVisible(prismUpdater);
+    connect(ui->chooseVersionButton, &QPushButton::clicked, this, [prismUpdater] { prismUpdater->chooseVersion(); });
+#endif
 }
 
 LauncherPage::~LauncherPage()
@@ -197,6 +208,7 @@ void LauncherPage::applySettings()
     if (APPLICATION->updater()) {
         APPLICATION->updater()->setAutomaticallyChecksForUpdates(ui->autoUpdateCheckBox->isChecked());
         APPLICATION->updater()->setUpdateCheckInterval(ui->updateIntervalSpinBox->value() * 3600);
+        APPLICATION->updater()->setBetaAllowed(ui->nightlyUpdateCheckBox->isChecked());
     }
 
     s->set("MenuBarInsteadOfToolBar", ui->preferMenuBarCheckBox->isChecked());
@@ -254,6 +266,7 @@ void LauncherPage::loadSettings()
     if (APPLICATION->updater()) {
         ui->autoUpdateCheckBox->setChecked(APPLICATION->updater()->getAutomaticallyChecksForUpdates());
         ui->updateIntervalSpinBox->setValue(APPLICATION->updater()->getUpdateCheckInterval() / 3600);
+        ui->nightlyUpdateCheckBox->setChecked(APPLICATION->updater()->getBetaAllowed());
     }
 
     ui->preferMenuBarCheckBox->setChecked(s->get("MenuBarInsteadOfToolBar").toBool());

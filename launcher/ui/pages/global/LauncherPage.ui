@@ -230,6 +230,26 @@
             </property>
            </widget>
           </item>
+          <item row="2" column="0" colspan="2">
+           <widget class="QCheckBox" name="nightlyUpdateCheckBox">
+            <property name="toolTip">
+             <string>Nightly builds are made from every change to the launcher and are not tested.</string>
+            </property>
+            <property name="text">
+             <string>Update to nightly builds</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QPushButton" name="chooseVersionButton">
+            <property name="toolTip">
+             <string>Install any published release or nightly build, older ones included. The launcher closes.</string>
+            </property>
+            <property name="text">
+             <string>Choose Version...</string>
+            </property>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

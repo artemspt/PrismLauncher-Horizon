@@ -107,6 +107,7 @@ class PrismUpdaterApp : public QApplication {
     QString m_prismExecutable;
     QUrl m_prismRepoUrl;
     Version m_userSelectedVersion;
+    QString m_userSelectedTag;
     bool m_checkOnly;
     bool m_forceUpdate;
     bool m_printOnly;
