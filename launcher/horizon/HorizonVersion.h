@@ -4,6 +4,9 @@
 #include <QString>
 #include "BaseVersion.h"
 
+// Not a release: the Hammer list's last entry, which the install builds from the core's newest commit
+inline const QString HammerSourceTag = QStringLiteral("hammer-source");
+
 class HorizonVersion : public BaseVersion {
    public:
     HorizonVersion() = default;
@@ -13,7 +16,7 @@ class HorizonVersion : public BaseVersion {
                    bool prerelease);
 
     QString descriptor() const override { return m_tag; }
-    QString name() const override { return m_tag; }
+    QString name() const override;
     QString typeString() const override { return m_prerelease ? "snapshot" : "release"; }
 
     QString tag() const { return m_tag; }

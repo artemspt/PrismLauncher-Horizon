@@ -2,6 +2,8 @@
 #include "HorizonInstallTask.h"
 
 #include <QDir>
+#include <QDirIterator>
+#include <QStandardPaths>
 #include <QFile>
 #include <QFileInfo>
 #include <QNetworkReply>
@@ -10,13 +12,32 @@
 #include <functional>
 #include <QUrl>
 
+#include "Application.h"
 #include "FileSystem.h"
+#include "HorizonVersion.h"
 #include "settings/SettingsObject.h"
+
+// What a build from source checks out: the core's branch, which its nightlies are built from too
+static const QString HammerGit = "https://github.com/artemspt/horizon-hammer-core.git";
+static const QString HammerBranch = "api/extra-100";
+
+#if defined(Q_OS_WIN)
+static const QString ExeSuffix = ".exe";
+#else
+static const QString ExeSuffix;
+#endif
 
 HorizonInstallTask::HorizonInstallTask(MinecraftInstance* instance)
     : Task(), m_instance(instance)
 {
     m_targetDir = FS::PathCombine(instance->instanceRoot(), "horizon");
+}
+
+bool HorizonInstallTask::abort()
+{
+    if (m_process)
+        m_process->kill();
+    return Task::abort();
 }
 
 void HorizonInstallTask::executeTask()
@@ -98,6 +119,108 @@ void HorizonInstallTask::downloadFinished()
     }
 #endif
 
+    if (m_instance->settings()->get("HorizonVersion").toString() == HammerSourceTag) {
+        buildFromSource();
+        return;
+    }
+    installExtracted();
+}
+
+void HorizonInstallTask::buildFromSource()
+{
+    // rustup puts cargo in ~/.cargo/bin, which a launcher started from the desktop may not have on its PATH
+    auto env = QProcessEnvironment::systemEnvironment();
+    const QString cargoBin = FS::PathCombine(QDir::homePath(), ".cargo", "bin");
+    env.insert("PATH", cargoBin + QDir::listSeparator() + env.value("PATH"));
+    const QString cargo = QStandardPaths::findExecutable("cargo", env.value("PATH").split(QDir::listSeparator()));
+    const QString git = QStandardPaths::findExecutable("git", env.value("PATH").split(QDir::listSeparator()));
+    if (cargo.isEmpty() || git.isEmpty()) {
+        emitFailed(tr("Building Horizon Hammer from source needs git and Rust (https://rustup.rs) installed."));
+        return;
+    }
+
+    // Kept between builds, so the next one only compiles what changed
+    m_sourceDir = FS::PathCombine(APPLICATION->dataRoot(), "cache", "horizon-hammer-source");
+    if (QDir(FS::PathCombine(m_sourceDir, ".git")).exists()) {
+        m_steps << QStringList{ git, "-C", m_sourceDir, "fetch", "--depth", "1", "origin", HammerBranch }
+                << QStringList{ git, "-C", m_sourceDir, "reset", "--hard", "FETCH_HEAD" };
+    } else {
+        QDir(m_sourceDir).removeRecursively();
+        QDir().mkpath(m_sourceDir);
+        m_steps << QStringList{ git, "clone", "--depth", "1", "--branch", HammerBranch, HammerGit, m_sourceDir };
+    }
+    // The programs a release packages, as hammer-release.yml builds them
+    m_steps << QStringList{ cargo, "build", "--release", "--locked", "--features", "horizon-client/mods",
+                            "-p", "horizon-client", "--bin", "horizon-client", "--bin", "horizon-ctl",
+                            "-p", "horizon-prepare", "--bin", "horizon-prepare", "-p", "horizon-server", "--bin", "horizon-server" };
+
+    m_process = new QProcess(this);
+    m_process->setProcessEnvironment(env);
+    m_process->setWorkingDirectory(m_sourceDir);
+    m_process->setProcessChannelMode(QProcess::MergedChannels);
+    connect(m_process, &QProcess::readyRead, this, [this] {
+        while (m_process->canReadLine()) {
+            const QString line = QString::fromUtf8(m_process->readLine()).trimmed();
+            if (line.isEmpty())
+                continue;
+            m_output << line;
+            if (m_output.size() > 30)
+                m_output.removeFirst();
+            setDetails(line);
+        }
+    });
+    connect(m_process, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
+        if (!isRunning())
+            return;
+        if (status != QProcess::NormalExit || code != 0) {
+            qWarning() << "Horizon Hammer build failed:" << m_output.join('\n');
+            emitFailed(tr("Building Horizon Hammer from source failed:\n%1").arg(m_output.mid(m_output.size() - 10).join('\n')));
+            return;
+        }
+        runNextStep();
+    });
+    setAbortable(true);
+    runNextStep();
+}
+
+void HorizonInstallTask::runNextStep()
+{
+    if (m_steps.isEmpty()) {
+        setAbortable(false);
+        installBuilt();
+        return;
+    }
+    auto step = m_steps.takeFirst();
+    const QString program = step.takeFirst();
+    setStatus(QFileInfo(program).baseName() == "cargo" ? tr("Building Horizon Hammer from source (the first build takes a while)...")
+                                                       : tr("Getting Horizon Hammer's newest commit..."));
+    m_output.clear();
+    m_process->start(program, step);
+}
+
+void HorizonInstallTask::installBuilt()
+{
+    // The archive's programs give way to the ones just built, beside its exporters
+    QDirIterator it(m_targetDir, { "horizon-client" + ExeSuffix }, QDir::Files, QDirIterator::Subdirectories);
+    if (!it.hasNext()) {
+        emitFailed(tr("The Horizon Hammer archive has no horizon-client to replace."));
+        return;
+    }
+    const QString dir = QFileInfo(it.next()).absolutePath();
+    for (const QString name : { "horizon-client", "horizon-ctl", "horizon-prepare", "horizon-server" }) {
+        const QString from = FS::PathCombine(m_sourceDir, "target", "release", name + ExeSuffix);
+        const QString to = FS::PathCombine(dir, name + ExeSuffix);
+        QFile::remove(to);
+        if (!QFile::copy(from, to)) {
+            emitFailed(tr("Could not copy %1 into the instance.").arg(name));
+            return;
+        }
+    }
+    installExtracted();
+}
+
+void HorizonInstallTask::installExtracted()
+{
     std::function<QString(const QDir&)> findBinary = [&](const QDir& dir) -> QString {
         for (const auto& entry : dir.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot)) {
             QString candidate = dir.absoluteFilePath(entry);

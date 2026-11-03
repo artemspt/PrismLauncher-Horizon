@@ -101,6 +101,8 @@ void HorizonPage::filterChanged()
     if (m_nightlies->isChecked())
         types << "(snapshot)";
     m_versionSelect->setFilter(BaseVersionList::TypeRole, Filters::regexp(QRegularExpression(types.join('|'))));
+    // Hammer's nightlies and its build from source are snapshots too
+    m_coreSelect->setFilter(BaseVersionList::TypeRole, Filters::regexp(QRegularExpression(types.join('|'))));
 }
 
 void HorizonPage::coreChanged()
@@ -141,7 +143,7 @@ void HorizonPage::suggestCurrent()
         m_dialog->setSuggestedPack();
         return;
     }
-    // hammer-0.1.0 -> Horizon Hammer 0.1.0
+    // hammer-0.1.0 -> Horizon Hammer 0.1.0, hammer-source -> Horizon Hammer source
     auto name = m_hammer->isChecked() ? "Horizon Hammer " + version->descriptor().remove(HammerTagPrefix) : version->descriptor();
     m_dialog->setSuggestedPack(name, new HorizonCreationTask(version));
     m_dialog->setSuggestedIcon("default");

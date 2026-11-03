@@ -4,6 +4,7 @@
 #include "tasks/Task.h"
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QProcess>
 #include "minecraft/MinecraftInstance.h"
 
 class HorizonInstallTask : public Task {
@@ -12,6 +13,8 @@ class HorizonInstallTask : public Task {
     explicit HorizonInstallTask(MinecraftInstance* instance);
     ~HorizonInstallTask() override = default;
 
+    bool abort() override;
+
    protected:
     void executeTask() override;
 
@@ -19,7 +22,11 @@ class HorizonInstallTask : public Task {
     void downloadFinished();
 
    private:
+    void installExtracted();
     void extractAndFinish();
+    void buildFromSource();
+    void runNextStep();
+    void installBuilt();
 
    private:
     MinecraftInstance* m_instance = nullptr;
@@ -28,4 +35,9 @@ class HorizonInstallTask : public Task {
     QString m_archivePath;
     QString m_targetDir;
     QString m_executablePath;
+    // Building from source: where the core is checked out and built, the commands left, and the one running
+    QString m_sourceDir;
+    QList<QStringList> m_steps;
+    QProcess* m_process = nullptr;
+    QStringList m_output;
 };

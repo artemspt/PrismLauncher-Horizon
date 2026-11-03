@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #include "HorizonVersion.h"
+#include <QCoreApplication>
 #include <QVersionNumber>
 
 HorizonVersion::HorizonVersion(const QString& tag,
@@ -11,6 +12,13 @@ HorizonVersion::HorizonVersion(const QString& tag,
     , m_downloadUrl(downloadUrl)
     , m_prerelease(prerelease)
 {}
+
+QString HorizonVersion::name() const
+{
+    if (m_tag == HammerSourceTag)
+        return QCoreApplication::translate("HorizonVersion", "Build from source (newest commit)");
+    return m_tag;
+}
 
 bool HorizonVersion::operator<(BaseVersion& other) const
 {

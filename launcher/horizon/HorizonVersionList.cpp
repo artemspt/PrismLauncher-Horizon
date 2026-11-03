@@ -63,7 +63,7 @@ QVariant HorizonVersionList::data(const QModelIndex& index, int role) const
         case VersionPointerRole:
             return QVariant::fromValue(m_versions[index.row()]);
         case VersionRole:
-            return version ? version->tag() : QString();
+            return version ? version->name() : QString();
         case VersionIdRole:
             return version ? version->tag() : QString();
         case TypeRole:
@@ -190,6 +190,17 @@ void HorizonVersionListLoadTask::replyFinished()
         auto version = std::make_shared<HorizonVersion>(tagName, publishedAt, downloadUrl, prerelease);
         versions.append(std::dynamic_pointer_cast<BaseVersion>(version));
     }
+
+    // Hammer's list ends with a build of the newest commit, made on this computer. It takes the newest build's archive
+    // for what isn't compiled (the exporters) and replaces its programs. Oldest, so never picked for the player
+    std::shared_ptr<HorizonVersion> newest;
+    for (const auto& version : versions) {
+        auto horizon = std::dynamic_pointer_cast<HorizonVersion>(version);
+        if (!newest || newest->publishedAt() < horizon->publishedAt())
+            newest = horizon;
+    }
+    if (!m_list->tagPrefix().isEmpty() && newest)
+        versions.append(std::make_shared<HorizonVersion>(HammerSourceTag, QString(), newest->downloadUrl(), true));
 
     m_list->updateListData(versions);
     emitSucceeded();
